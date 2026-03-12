@@ -3,7 +3,7 @@
 This directory contains the self-hosted monitoring stack for PinBridge.
 
 - [docker-compose.yml](/home/mouadk/workspace/pinbridge/monitoring/docker-compose.yml) builds the OpenStatus stack.
-- [nginx.monitoring.conf.example](/home/mouadk/workspace/pinbridge/monitoring/nginx.monitoring.conf.example) is the host-level `nginx` reverse proxy template.
+- [nginx.monitoring.conf.example](/home/mouadk/workspace/pinbridge/monitoring/conf/nginx.monitoring.conf.example) is the host-level `nginx` reverse proxy template.
 - [.env.example](/home/mouadk/workspace/pinbridge/monitoring/.env.example) is the configuration template.
 - [monitoring.md](/home/mouadk/workspace/pinbridge/monitoring/monitoring.md) contains the monitoring design notes and monitor strategy.
 
@@ -12,6 +12,8 @@ This directory contains the self-hosted monitoring stack for PinBridge.
 The compose stack starts:
 
 - `libsql`
+- `redis`
+- `redis-http`
 - `tinybird-local`
 - `workflows`
 - `server`
@@ -75,6 +77,7 @@ Edit `.env` and set these values at minimum:
 - `SUPER_ADMIN_TOKEN`
 - `RESEND_API_KEY`
 - `OPENSTATUS_GIT_REF`
+- `UPSTASH_REDIS_REST_TOKEN`
 
 Recommended first pass:
 
@@ -94,6 +97,8 @@ AUTH_SECRET=<long-random-secret>
 CRON_SECRET=<long-random-secret>
 SUPER_ADMIN_TOKEN=<long-random-secret>
 RESEND_API_KEY=<your-resend-api-key>
+UPSTASH_REDIS_REST_URL=http://redis-http:80
+UPSTASH_REDIS_REST_TOKEN=<long-random-secret>
 OPENSTATUS_PRIVATE_LOCATION_KEY=replace-after-bootstrap
 ```
 
@@ -125,6 +130,8 @@ Check logs if something fails:
 docker compose logs --tail 200
 ```
 
+If `workflows` fails with `Unable to find environment variable: UPSTASH_REDIS_REST_URL`, your `.env` is wrong or stale. This stack includes a local Redis REST shim already, so `UPSTASH_REDIS_REST_URL` should normally stay at `http://redis-http:80`.
+
 Expected host bindings:
 
 - dashboard on `127.0.0.1:3002`
@@ -142,7 +149,7 @@ curl -I http://127.0.0.1:3003
 Copy the example config and replace the example domains with your real ones:
 
 ```bash
-sudo cp nginx.monitoring.conf.example /etc/nginx/sites-available/pinbridge-monitoring.conf
+sudo cp conf/nginx.monitoring.conf.example /etc/nginx/sites-available/pinbridge-monitoring.conf
 sudo nano /etc/nginx/sites-available/pinbridge-monitoring.conf
 ```
 
@@ -327,3 +334,4 @@ That is safer than tracking `main` forever.
 - `dashboard` and `status-page` are intentionally bound to loopback only. Do not change them to `0.0.0.0` unless you want to bypass `nginx`.
 - `private-location` will not become healthy until `OPENSTATUS_PRIVATE_LOCATION_KEY` is set correctly.
 - `statusz` should not be exposed publicly without auth or network restrictions.
+- This stack includes local Redis plus an Upstash-compatible REST proxy because current OpenStatus builds expect `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` even in self-hosted mode.

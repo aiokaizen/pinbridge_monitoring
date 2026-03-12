@@ -207,6 +207,8 @@ Use two public domains:
 Keep these internal only:
 
 - `libsql`
+- `redis`
+- `redis-http`
 - `tinybird-local`
 - `server`
 - `checker`
