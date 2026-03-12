@@ -1,0 +1,210 @@
+name: pinbridge-monitoring
+
+networks:
+  monitoring_internal:
+    driver: bridge
+    internal: true
+    name: pinbridge-monitoring-internal
+
+volumes:
+  libsql_data:
+    name: pinbridge-monitoring-libsql-data
+  workflows_data:
+    name: pinbridge-monitoring-workflows-data
+
+services:
+  libsql:
+    image: ghcr.io/tursodatabase/libsql-server:latest
+    container_name: pinbridge-monitoring-libsql
+    restart: unless-stopped
+    environment:
+      SQLD_NODE: primary
+    volumes:
+      - libsql_data:/var/lib/sqld
+    expose:
+      - "8080"
+      - "5001"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "perl -e 'use IO::Socket::INET; exit(IO::Socket::INET->new(PeerAddr=>\"127.0.0.1:8080\",Timeout=>1) ? 0 : 1);'",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - monitoring_internal
+
+  tinybird-local:
+    image: tinybirdco/tinybird-local:latest
+    platform: linux/amd64
+    container_name: pinbridge-monitoring-tinybird
+    restart: unless-stopped
+    environment:
+      COMPATIBILITY_MODE: "1"
+    expose:
+      - "7181"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7181/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - monitoring_internal
+
+  workflows:
+    build:
+      context: https://github.com/openstatusHQ/openstatus.git#${OPENSTATUS_GIT_REF}
+      dockerfile: apps/workflows/Dockerfile
+    image: pinbridge-monitoring-workflows:${OPENSTATUS_GIT_REF}
+    container_name: pinbridge-monitoring-workflows
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-http://libsql:8080}
+      PORT: "3000"
+    volumes:
+      - workflows_data:/app/data
+    expose:
+      - "3000"
+    depends_on:
+      libsql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/ping || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - monitoring_internal
+
+  server:
+    build:
+      context: https://github.com/openstatusHQ/openstatus.git#${OPENSTATUS_GIT_REF}
+      dockerfile: apps/server/Dockerfile
+    image: pinbridge-monitoring-server:${OPENSTATUS_GIT_REF}
+    container_name: pinbridge-monitoring-server
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-http://libsql:8080}
+      PORT: "3001"
+    expose:
+      - "3001"
+    depends_on:
+      workflows:
+        condition: service_healthy
+      libsql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3001/ping || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - monitoring_internal
+
+  private-location:
+    build:
+      context: https://github.com/openstatusHQ/openstatus.git#${OPENSTATUS_GIT_REF}:apps/private-location
+      dockerfile: Dockerfile
+    image: pinbridge-monitoring-private-location:${OPENSTATUS_GIT_REF}
+    container_name: pinbridge-monitoring-private-location
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      OPENSTATUS_KEY: ${OPENSTATUS_PRIVATE_LOCATION_KEY}
+      OPENSTATUS_INGEST_URL: ${OPENSTATUS_INGEST_URL:-http://server:3000}
+      DB_URL: ${DATABASE_URL:-http://libsql:8080}
+      TINYBIRD_URL: ${TINYBIRD_URL:-http://tinybird-local:7181}
+      GIN_MODE: release
+      PORT: "8081"
+    expose:
+      - "8081"
+    depends_on:
+      server:
+        condition: service_healthy
+      tinybird-local:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8081/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - monitoring_internal
+
+  dashboard:
+    build:
+      context: https://github.com/openstatusHQ/openstatus.git#${OPENSTATUS_GIT_REF}
+      dockerfile: apps/dashboard/Dockerfile
+    image: pinbridge-monitoring-dashboard:${OPENSTATUS_GIT_REF}
+    container_name: pinbridge-monitoring-dashboard
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-http://libsql:8080}
+      PORT: "3002"
+      HOSTNAME: 0.0.0.0
+      AUTH_TRUST_HOST: "true"
+      NEXT_PUBLIC_URL: ${DASHBOARD_PUBLIC_URL}
+    ports:
+      - "${MONITORING_DASHBOARD_BIND_IP:-127.0.0.1}:${MONITORING_DASHBOARD_BIND_PORT:-3002}:3002"
+    depends_on:
+      workflows:
+        condition: service_healthy
+      libsql:
+        condition: service_healthy
+      server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3002/ || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
+    networks:
+      - monitoring_internal
+
+  status-page:
+    build:
+      context: https://github.com/openstatusHQ/openstatus.git#${OPENSTATUS_GIT_REF}
+      dockerfile: apps/status-page/Dockerfile
+    image: pinbridge-monitoring-status-page:${OPENSTATUS_GIT_REF}
+    container_name: pinbridge-monitoring-status-page
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-http://libsql:8080}
+      PORT: "3003"
+      HOSTNAME: 0.0.0.0
+      AUTH_TRUST_HOST: "true"
+      NEXT_PUBLIC_URL: ${STATUS_PAGE_PUBLIC_URL}
+    ports:
+      - "${MONITORING_STATUS_BIND_IP:-127.0.0.1}:${MONITORING_STATUS_BIND_PORT:-3003}:3003"
+    depends_on:
+      workflows:
+        condition: service_healthy
+      libsql:
+        condition: service_healthy
+      server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3003/ || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
+    networks:
+      - monitoring_internal
