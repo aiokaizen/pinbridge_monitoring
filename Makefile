@@ -3,8 +3,8 @@ SHELL := /bin/sh
 COMPOSE := docker compose --env-file .env
 OPENSTATUS_SOURCE_DIR ?= ../openstatus
 OPENSTATUS_BUILD_IMAGE ?= pinbridge-openstatus-workflows-build
-MONITORING_NETWORK ?= pinbridge-monitoring-internal
 LIBSQL_VOLUME ?= pinbridge-monitoring-libsql-data
+LIBSQL_CONTAINER ?= pinbridge-monitoring-libsql
 WORKSPACE_ID ?= 1
 
 .PHONY: help up rebuild restart logs ps \
@@ -59,8 +59,8 @@ migrate-db:
 		-t $(OPENSTATUS_BUILD_IMAGE) \
 		$(OPENSTATUS_SOURCE_DIR)
 	docker run --rm \
-		--network $(MONITORING_NETWORK) \
-		-e DATABASE_URL=http://pinbridge-monitoring-libsql:8080 \
+		--network container:$(LIBSQL_CONTAINER) \
+		-e DATABASE_URL=http://127.0.0.1:8080 \
 		-e DATABASE_AUTH_TOKEN= \
 		-w /app/packages/db \
 		$(OPENSTATUS_BUILD_IMAGE) \
