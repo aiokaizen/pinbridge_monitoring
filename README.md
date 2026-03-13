@@ -6,6 +6,7 @@ This directory contains the self-hosted monitoring stack for PinBridge.
 - [conf/nginx.monitoring.conf.example](/home/mouadk/workspace/pinbridge/monitoring/conf/nginx.monitoring.conf.example) is the host-level `nginx` reverse proxy template.
 - [.env.example](/home/mouadk/workspace/pinbridge/monitoring/.env.example) is the runtime configuration template.
 - [monitoring.md](/home/mouadk/workspace/pinbridge/monitoring/monitoring.md) contains the monitoring design notes.
+- [Makefile](/home/mouadk/workspace/pinbridge/monitoring/Makefile) contains the recurring recovery/admin commands for this stack.
 
 ## What This Stack Runs
 
@@ -21,6 +22,12 @@ The compose stack starts:
 - `private-location`
 - `dashboard`
 - `status-page`
+
+Useful operator shortcut:
+
+```bash
+make help
+```
 
 Only these ports are bound on the host:
 
