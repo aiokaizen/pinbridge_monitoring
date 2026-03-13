@@ -134,6 +134,7 @@ OPENSTATUS_WORKFLOWS_URL=http://workflows:3000
 OPENSTATUS_INGEST_URL=http://server:3000
 
 DATABASE_URL=http://libsql:8080
+SQLD_DB_PATH=/var/lib/sqld/iku.db
 UPSTASH_REDIS_REST_URL=http://redis-http:80
 UPSTASH_REDIS_REST_TOKEN=<long-random-secret>
 TINYBIRD_URL=http://tinybird-local:7181
@@ -150,6 +151,7 @@ openssl rand -hex 32
 
 Do not leave placeholder values in production.
 Do not keep unused optional variables in the real `.env` as blank assignments. Omit them entirely.
+Do not change `SQLD_DB_PATH` after first boot unless you are intentionally migrating the libsql database file. If that path drifts, OpenStatus can come back against a fresh SQLite file and appear to "lose" monitors, pages, and workspace plan state even though the named volume still exists.
 
 ## Step 3: Build And Start The Stack
 
@@ -179,6 +181,15 @@ Expected healthy services:
 - `pinbridge-monitoring-private-location`
 - `pinbridge-monitoring-dashboard`
 - `pinbridge-monitoring-status-page`
+
+Persistence check after first boot:
+
+```bash
+docker volume inspect pinbridge-monitoring-libsql-data
+docker run --rm -v pinbridge-monitoring-libsql-data:/data alpine sh -lc 'ls -lah /data'
+```
+
+You should see the libsql database file at the path configured by `SQLD_DB_PATH`, typically `/var/lib/sqld/iku.db`.
 
 Local health checks on the server:
 

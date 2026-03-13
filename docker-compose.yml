@@ -20,6 +20,7 @@ services:
     restart: unless-stopped
     environment:
       SQLD_NODE: primary
+      SQLD_DB_PATH: ${SQLD_DB_PATH:-/var/lib/sqld/iku.db}
     volumes:
       - libsql_data:/var/lib/sqld
     expose:
