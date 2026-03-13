@@ -109,8 +109,8 @@ Monitor these components:
 
 Recommended intervals:
 
-- public synthetic checks: every `30s`
-- private readiness checks: every `30s`
+- public synthetic checks: every `1m`
+- private readiness checks: every `1m`
 - `statusz` polling: every `60s` to `120s`
 - queue/backlog evaluation: every `60s`
 
@@ -125,12 +125,14 @@ WebApp:
 - URL: `https://app.pinbridge.io/`
 - expectation: `200`
 - purpose: user-facing availability
+- self-host interval: `1m`
 
 API liveness:
 
 - URL: `https://api.pinbridge.io/healthz`
 - expectation: `200` and JSON `status=ok`
 - purpose: public API process availability
+- self-host interval: `1m`
 
 ### Private checks
 
@@ -140,6 +142,7 @@ API readiness:
 - run from: private OpenStatus location
 - expectation: `200`
 - failure means: do not trust the instance for real traffic
+- self-host interval: `1m`
 
 Detailed runtime snapshot:
 
@@ -190,6 +193,7 @@ Important:
 - this is configuration/status context, not a guarantee that each external API is live at that exact moment
 - do not turn every provider into a blocking readiness dependency
 - external providers can be monitored separately with targeted runbooks if needed
+- this self-host stack currently supports a single checker region; use `CHECKER_REGION` consistently in monitor configuration
 
 Use provider data from `statusz` to catch:
 
