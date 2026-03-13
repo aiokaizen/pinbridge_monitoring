@@ -151,7 +151,7 @@ services:
       libsql:
         condition: service_healthy
       checker:
-        condition: service_healthy
+        condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:3000/ping || exit 1"]
       interval: 15s
@@ -185,12 +185,6 @@ services:
         condition: service_healthy
       tinybird-local:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
-      interval: 15s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
     networks:
       - monitoring_internal
 
@@ -256,7 +250,7 @@ services:
       server:
         condition: service_healthy
       checker:
-        condition: service_healthy
+        condition: service_started
       redis-http:
         condition: service_started
     healthcheck:
