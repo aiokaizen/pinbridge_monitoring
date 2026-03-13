@@ -3,7 +3,6 @@ name: pinbridge-monitoring
 networks:
   monitoring_internal:
     driver: bridge
-    internal: true
     name: pinbridge-monitoring-internal
 
 volumes:

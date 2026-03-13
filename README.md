@@ -27,7 +27,7 @@ Only these ports are bound on the host:
 - `127.0.0.1:3002` for the OpenStatus operator dashboard
 - `127.0.0.1:3003` for the public status page
 
-Everything else stays on the internal Docker network.
+Everything else stays on the private Docker bridge network and is not published on the host.
 
 This stack is intentionally self-host only:
 
