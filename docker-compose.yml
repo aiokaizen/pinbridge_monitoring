@@ -140,9 +140,13 @@ services:
       DATABASE_URL: ${DATABASE_URL:-http://libsql:8080}
       PORT: "3000"
       SELF_HOST: "true"
+      DASHBOARD_PUBLIC_URL: ${DASHBOARD_PUBLIC_URL}
+      NEXT_PUBLIC_URL: ${DASHBOARD_PUBLIC_URL}
       CHECKER_BASE_URL: ${CHECKER_BASE_URL:-http://checker:8080}
       CHECKER_REGION: ${CHECKER_REGION:-ams}
       CRON_SECRET: ${CRON_SECRET}
+    ports:
+      - "${MONITORING_SERVER_BIND_IP:-127.0.0.1}:${MONITORING_SERVER_BIND_PORT:-3001}:3000"
     expose:
       - "3000"
     depends_on:
@@ -234,6 +238,8 @@ services:
       PORT: "3000"
       HOSTNAME: 0.0.0.0
       AUTH_TRUST_HOST: "true"
+      AUTH_URL: ${DASHBOARD_PUBLIC_URL}
+      NEXTAUTH_URL: ${DASHBOARD_PUBLIC_URL}
       SELF_HOST: "true"
       NEXT_PUBLIC_URL: ${DASHBOARD_PUBLIC_URL}
       CHECKER_BASE_URL: ${CHECKER_BASE_URL:-http://checker:8080}
@@ -276,6 +282,8 @@ services:
       PORT: "3000"
       HOSTNAME: 0.0.0.0
       AUTH_TRUST_HOST: "true"
+      AUTH_URL: ${STATUS_PAGE_PUBLIC_URL}
+      NEXTAUTH_URL: ${STATUS_PAGE_PUBLIC_URL}
       SELF_HOST: "true"
       NEXT_PUBLIC_URL: ${STATUS_PAGE_PUBLIC_URL}
       UPSTASH_REDIS_REST_URL: ${UPSTASH_REDIS_REST_URL:-http://redis-http:80}

@@ -26,6 +26,7 @@ Only these ports are bound on the host:
 
 - `127.0.0.1:3002` for the OpenStatus operator dashboard
 - `127.0.0.1:3003` for the public status page
+- `127.0.0.1:3001` for the internal OpenStatus server callback surface
 
 Everything else stays on the private Docker bridge network and is not published on the host.
 
@@ -117,6 +118,8 @@ MONITORING_DASHBOARD_BIND_IP=127.0.0.1
 MONITORING_DASHBOARD_BIND_PORT=3002
 MONITORING_STATUS_BIND_IP=127.0.0.1
 MONITORING_STATUS_BIND_PORT=3003
+MONITORING_SERVER_BIND_IP=127.0.0.1
+MONITORING_SERVER_BIND_PORT=3001
 
 OPENSTATUS_SOURCE_DIR=/opt/pinbridge/openstatus
 OPENSTATUS_BUILD_TAG=pinbridge-selfhost
@@ -219,6 +222,7 @@ The final config should proxy:
 
 - `openstatus.pinbridge.io` -> `http://127.0.0.1:3002`
 - `status.pinbridge.io` -> `http://127.0.0.1:3003`
+- `openstatus.pinbridge.io/slack/*` -> `http://127.0.0.1:3001/slack/*`
 
 Enable it:
 
