@@ -1,27 +1,21 @@
 # PinBridge Monitoring Server
 
-This directory contains the self-hosted monitoring stack for PinBridge.
+This directory now runs PinBridge monitoring with Uptime Kuma, not OpenStatus.
 
-- [docker-compose.yml](/home/mouadk/workspace/pinbridge/monitoring/docker-compose.yml) runs the monitoring stack.
+That is an intentional simplification:
+
+- one container instead of a fragile multi-service stack
+- one persistent volume
+- no framework patching
+- no custom migrations
+- no cron scheduler glue
+- no workspace or billing state to recover
+
+- [docker-compose.yml](/home/mouadk/workspace/pinbridge/monitoring/docker-compose.yml) runs the Uptime Kuma stack.
 - [conf/nginx.monitoring.conf.example](/home/mouadk/workspace/pinbridge/monitoring/conf/nginx.monitoring.conf.example) is the host-level `nginx` reverse proxy template.
 - [.env.example](/home/mouadk/workspace/pinbridge/monitoring/.env.example) is the runtime configuration template.
 - [monitoring.md](/home/mouadk/workspace/pinbridge/monitoring/monitoring.md) contains the monitoring design notes.
-- [Makefile](/home/mouadk/workspace/pinbridge/monitoring/Makefile) contains the recurring recovery/admin commands for this stack.
-
-## What This Stack Runs
-
-The compose stack starts:
-
-- `libsql`
-- `redis`
-- `redis-http`
-- `tinybird-local`
-- `workflows`
-- `checker`
-- `server`
-- `private-location`
-- `dashboard`
-- `status-page`
+- [Makefile](/home/mouadk/workspace/pinbridge/monitoring/Makefile) contains the recurring operator commands for this stack.
 
 Useful operator shortcut:
 
@@ -29,20 +23,22 @@ Useful operator shortcut:
 make help
 ```
 
-Only these ports are bound on the host:
+## What This Stack Runs
 
-- `127.0.0.1:3002` for the OpenStatus operator dashboard
-- `127.0.0.1:3003` for the public status page
-- `127.0.0.1:3001` for the internal OpenStatus server callback surface
+The compose stack starts exactly one service:
 
-Everything else stays on the private Docker bridge network and is not published on the host.
+- `kuma`
 
-This stack is intentionally self-host only:
+Only one port is bound on the host:
 
-- it builds from a local `openstatus/` checkout
-- it does not require Google Cloud Tasks
-- it does not use OpenStatus cloud checker endpoints
-- it assumes one local checker region, configured by `CHECKER_REGION`
+- `127.0.0.1:3002` for the Uptime Kuma web UI
+
+`nginx` should expose that same Kuma instance on two public domains:
+
+- `openstatus.pinbridge.io` for the operator dashboard
+- `status.pinbridge.io` for the public status page
+
+The status domain is just a dedicated reverse-proxy entry point to a Kuma status page slug such as `/status/pinbridge`.
 
 ## Prerequisites
 
@@ -54,21 +50,8 @@ The monitoring server must have:
 4. Public DNS records pointing to this server:
    - `openstatus.pinbridge.io`
    - `status.pinbridge.io`
-5. Enough disk space to build OpenStatus images locally.
 
-## Directory Layout On The Server
-
-The monitoring stack builds from `../openstatus`, so the simplest server layout is:
-
-```text
-/opt/pinbridge/
-  monitoring/
-  openstatus/
-```
-
-If you keep `openstatus/` somewhere else, set `OPENSTATUS_SOURCE_DIR` in `.env` to the absolute path.
-
-## Step 1: Copy Both Folders To The Server
+## Step 1: Copy `monitoring/` To The Server
 
 On the server:
 
@@ -78,19 +61,15 @@ sudo chown "$USER":"$USER" /opt/pinbridge
 cd /opt/pinbridge
 ```
 
-Copy these two directories from your workstation or repo checkout:
+Copy this directory from your workstation or repo checkout:
 
 - `monitoring/`
-- `openstatus/`
 
 Example with `rsync` from your local machine:
 
 ```bash
 rsync -av --delete /local/path/to/pinbridge/monitoring/ user@server:/opt/pinbridge/monitoring/
-rsync -av --delete /local/path/to/pinbridge/openstatus/ user@server:/opt/pinbridge/openstatus/
 ```
-
-If both directories already exist on the server, just continue.
 
 ## Step 2: Create `.env`
 
@@ -101,120 +80,52 @@ cd /opt/pinbridge/monitoring
 cp .env.example .env
 ```
 
-Edit `.env` and set these values at minimum:
+Edit `.env` and set these values:
 
 - `MONITORING_DASHBOARD_DOMAIN`
 - `MONITORING_STATUS_DOMAIN`
-- `DASHBOARD_PUBLIC_URL`
-- `STATUS_PAGE_PUBLIC_URL`
-- `AUTH_SECRET`
-- `CRON_SECRET`
-- `SUPER_ADMIN_TOKEN`
-- `RESEND_API_KEY`
-- `UPSTASH_REDIS_REST_TOKEN`
-- `OPENSTATUS_SOURCE_DIR`
+- `MONITORING_KUMA_BIND_IP`
+- `MONITORING_KUMA_BIND_PORT`
+- `KUMA_STATUS_PAGE_SLUG`
+- `TZ`
 
 Recommended starting config:
 
 ```env
 MONITORING_DASHBOARD_DOMAIN=openstatus.pinbridge.io
 MONITORING_STATUS_DOMAIN=status.pinbridge.io
-DASHBOARD_PUBLIC_URL=https://openstatus.pinbridge.io
-STATUS_PAGE_PUBLIC_URL=https://status.pinbridge.io
-MONITORING_DASHBOARD_BIND_IP=127.0.0.1
-MONITORING_DASHBOARD_BIND_PORT=3002
-MONITORING_STATUS_BIND_IP=127.0.0.1
-MONITORING_STATUS_BIND_PORT=3003
-MONITORING_SERVER_BIND_IP=127.0.0.1
-MONITORING_SERVER_BIND_PORT=3001
-
-OPENSTATUS_SOURCE_DIR=/opt/pinbridge/openstatus
-OPENSTATUS_BUILD_TAG=pinbridge-selfhost
-
-NODE_ENV=production
-SELF_HOST=true
-AUTH_SECRET=<long-random-secret>
-CRON_SECRET=<long-random-secret>
-SUPER_ADMIN_TOKEN=<long-random-secret>
-
-CHECKER_BASE_URL=http://checker:8080
-CHECKER_REGION=ams
-WORKFLOWS_BASE_URL=http://workflows:3000
-OPENSTATUS_WORKFLOWS_URL=http://workflows:3000
-OPENSTATUS_INGEST_URL=http://server:3000
-
-DATABASE_URL=http://libsql:8080
-SQLD_DB_PATH=/var/lib/sqld/iku.db
-UPSTASH_REDIS_REST_URL=http://redis-http:80
-UPSTASH_REDIS_REST_TOKEN=<long-random-secret>
-TINYBIRD_URL=http://tinybird-local:7181
-
-RESEND_API_KEY=<your-resend-api-key>
-OPENSTATUS_PRIVATE_LOCATION_KEY=replace-after-bootstrap
+MONITORING_KUMA_BIND_IP=127.0.0.1
+MONITORING_KUMA_BIND_PORT=3002
+KUMA_STATUS_PAGE_SLUG=pinbridge
+UPTIME_KUMA_IMAGE=louislam/uptime-kuma:1
+TZ=Africa/Casablanca
 ```
 
-Generate strong secrets with:
+The `PINBRIDGE_*` monitor target values in [.env.example](/home/mouadk/workspace/pinbridge/monitoring/.env.example) are documentation inputs for the monitors you create in the Kuma UI. Kuma does not read them automatically.
 
-```bash
-openssl rand -hex 32
-```
-
-Do not leave placeholder values in production.
-Do not keep unused optional variables in the real `.env` as blank assignments. Omit them entirely.
-Do not change `SQLD_DB_PATH` after first boot unless you are intentionally migrating the libsql database file. If that path drifts, OpenStatus can come back against a fresh SQLite file and appear to "lose" monitors, pages, and workspace plan state even though the named volume still exists.
-
-## Step 3: Build And Start The Stack
+## Step 3: Start The Stack
 
 From the `monitoring/` directory:
 
 ```bash
-docker compose up -d --build
+make up
 ```
 
 Then inspect:
 
 ```bash
-docker compose ps
-docker compose logs workflows --tail 200
-docker compose logs checker --tail 200
-```
-
-Expected healthy services:
-
-- `pinbridge-monitoring-libsql`
-- `pinbridge-monitoring-redis`
-- `pinbridge-monitoring-redis-http`
-- `pinbridge-monitoring-tinybird`
-- `pinbridge-monitoring-workflows`
-- `pinbridge-monitoring-checker`
-- `pinbridge-monitoring-server`
-- `pinbridge-monitoring-private-location`
-- `pinbridge-monitoring-dashboard`
-- `pinbridge-monitoring-status-page`
-
-Persistence check after first boot:
-
-```bash
-docker volume inspect pinbridge-monitoring-libsql-data
-docker run --rm -v pinbridge-monitoring-libsql-data:/data alpine sh -lc 'ls -lah /data'
-```
-
-You should see the libsql database file at the path configured by `SQLD_DB_PATH`, typically `/var/lib/sqld/iku.db`.
-
-Local health checks on the server:
-
-```bash
+make ps
+make logs
 curl -I http://127.0.0.1:3002
-curl -I http://127.0.0.1:3003
-docker compose exec checker wget -qO- http://localhost:8080/health
-docker compose exec workflows wget -qO- http://localhost:3000/ping
 ```
 
-If you change OpenStatus source code later:
+Persistence check:
 
 ```bash
-docker compose up -d --build --force-recreate
+make persistence-check
 ```
+
+You should see Kuma data files inside the named volume `pinbridge-monitoring-kuma-data`.
 
 ## Step 4: Configure `nginx`
 
@@ -225,11 +136,17 @@ sudo cp conf/nginx.monitoring.conf.example /etc/nginx/sites-available/pinbridge-
 sudo nano /etc/nginx/sites-available/pinbridge-monitoring.conf
 ```
 
+Update the example:
+
+- replace `openstatus.example.com` with your dashboard domain
+- replace `status.example.com` with your public status domain
+- replace `/status/pinbridge` with `/status/<your-status-page-slug>` if you changed `KUMA_STATUS_PAGE_SLUG`
+
 The final config should proxy:
 
 - `openstatus.pinbridge.io` -> `http://127.0.0.1:3002`
-- `status.pinbridge.io` -> `http://127.0.0.1:3003`
-- `openstatus.pinbridge.io/slack/*` -> `http://127.0.0.1:3001/slack/*`
+- `status.pinbridge.io` -> `http://127.0.0.1:3002`
+- `https://status.pinbridge.io/` -> redirect to `https://status.pinbridge.io/status/pinbridge`
 
 Enable it:
 
@@ -258,127 +175,77 @@ curl -I https://openstatus.pinbridge.io
 curl -I https://status.pinbridge.io
 ```
 
-## Step 6: Bootstrap OpenStatus
+## Step 6: First Boot In Uptime Kuma
 
 Open:
 
-```text
-https://openstatus.pinbridge.io
-```
+- `https://openstatus.pinbridge.io`
 
-Sign in and complete initial setup.
+On first boot:
 
-## Step 7: Create The Private Location Key
+1. Create the Kuma admin account.
+2. Set notification channels in the UI.
+3. Create the public status page with slug `pinbridge` or whatever you set in `.env`.
+4. Attach the monitors you want exposed publicly.
 
-In OpenStatus:
+There is no billing plan, no workspace recovery, no migrations, and no private-location bootstrap anymore. That entire OpenStatus failure surface is gone.
 
-1. Go to `Settings`.
-2. Go to `Private Locations`.
-3. Create a private location.
-4. Copy the generated key.
+## Recommended Monitors
 
-Put that key into `.env`:
+Start with these monitors:
 
-```env
-OPENSTATUS_PRIVATE_LOCATION_KEY=<real-private-location-key>
-```
+1. Website
+   - type: `HTTP(s)`
+   - URL: `https://www.pinbridge.io/`
+   - interval: `60s`
 
-Restart only that service:
-
-```bash
-cd /opt/pinbridge/monitoring
-docker compose up -d private-location
-docker compose logs private-location --tail 100
-```
-
-## Step 8: Create PinBridge Monitors
-
-Create these first:
-
-1. WebApp public availability
+2. App
+   - type: `HTTP(s)`
    - URL: `https://app.pinbridge.io/`
-   - interval: `1m`
-   - location: public
-   - region: `ams`
+   - interval: `60s`
 
-2. API liveness
+3. API Health
+   - type: `HTTP(s)`
    - URL: `https://api.pinbridge.io/healthz`
-   - interval: `1m`
-   - location: public
-   - region: `ams`
+   - interval: `60s`
 
-3. API readiness
+4. API Ready
+   - type: `HTTP(s)`
    - URL: `https://api.pinbridge.io/readyz`
-   - interval: `1m`
-   - location: private location
-   - region: `ams`
+   - interval: `60s`
+   - only create this if the monitoring server is allowed to reach it
 
-4. Internal diagnostics
+5. API Status
+   - type: `HTTP(s)`
    - URL: `https://api.pinbridge.io/statusz`
-   - interval: `60s` or `120s`
-   - location: private location
-   - region: `ams`
-   - auth header if required
+   - interval: `120s`
+   - add auth headers if needed
+   - keep this internal if it exposes too much detail
 
-Do not use `/statusz` as the primary uptime probe.
+For protected endpoints, use Kuma request headers instead of weakening the endpoint just for monitoring.
 
-## Step 9: Protect And Use `/statusz`
+## Backup
 
-`/statusz` is for internal monitoring only.
-
-On the PinBridge API side:
-
-1. Set `ADMIN_API_TOKEN`.
-2. Set `ADMIN_ALLOWED_HOSTS` to allow the monitoring server IP.
-3. Redeploy the API.
-
-If `/statusz` requires bearer auth, configure the monitor header as:
-
-```text
-Authorization: Bearer <ADMIN_API_TOKEN>
-```
-
-## Step 10: Validate The Whole Setup
-
-Check containers:
+Create a volume backup before major server changes:
 
 ```bash
-cd /opt/pinbridge/monitoring
-docker compose ps
+make backup
 ```
 
-Check nginx:
+That creates a tarball under `monitoring/backups/`.
 
-```bash
-sudo nginx -t
-systemctl status nginx --no-pager
-```
+## What Changed From OpenStatus
 
-Verify endpoints:
+This repo no longer provides:
 
-```bash
-curl -I https://openstatus.pinbridge.io
-curl -I https://status.pinbridge.io
-curl -s https://api.pinbridge.io/healthz
-curl -s https://api.pinbridge.io/readyz
-curl -s -H 'Authorization: Bearer <ADMIN_API_TOKEN>' https://api.pinbridge.io/statusz
-```
+- OpenStatus builds
+- libsql
+- Redis
+- Tinybird
+- workflows
+- checker
+- private locations
+- workspace SQL recovery commands
+- monitor scheduler cron jobs
 
-## Updating The Stack
-
-When you change the local OpenStatus fork:
-
-```bash
-cd /opt/pinbridge/openstatus
-git pull
-cd /opt/pinbridge/monitoring
-docker compose up -d --build --force-recreate
-docker compose ps
-```
-
-## Operational Notes
-
-- This self-host path is single-checker-region by design. Use the region from `CHECKER_REGION`, default `ams`.
-- Use `1m` or slower monitor intervals. This self-host path does not emulate OpenStatus cloud's `30s` split scheduling.
-- Do not track upstream `main` in production and hope it stays working. Build from your audited local checkout or your own fork.
-- If the stack breaks, inspect `workflows`, `checker`, and `server` first. Those are the critical self-host pieces.
+If you still have old OpenStatus data somewhere, this stack does not migrate it. Recreate the monitors and the Kuma status page manually.
